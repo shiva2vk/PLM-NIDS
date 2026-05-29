@@ -1,0 +1,71 @@
+Final Project Structure
+
+plm_nids/
+├── config.yaml                    ← all paths, hyperparameters
+├── data/
+│   ├── pcap_tokenizer.py          ← L3/L4-only tokenizer (9 tok/pkt)
+│   ├── cic_loader.py              ← CIC-IDS-2017 per-day PCAP parser
+│   ├── pcap_dataset.py            ← variable-length PyTorch datasets
+│   └── dataset.py / tokenizer.py  ← FlowMeter CSV mode (kept for comparison)
+├── models/  rwkv.py + plm.py      ← RWKV-4 backbone + PLM
+├── training/ trainer.py           ← Phase-1 / Phase-2 trainer
+├── evaluation/ metrics.py         ← PR-AUC, ROC-AUC, F1, FPR@TPR95%
+├── inference/ scorer.py           ← AnomalyScorer + FlowStateCache
+└── scripts/
+    ├── train.py                   ← training entry point
+    ├── evaluate.py                ← evaluation entry point
+    ├── visualize.py               ← all 9 paper figures
+    └── run_pipeline.sh            ← one-command full pipeline
+Step-by-Step Instructions
+Step 1 — Install dependencies (once)
+
+cd /Users/vivsharma/VK_AI_LEARN/plm_nids
+pip install -r requirements.txt
+Step 2 — Full pipeline (recommended first run)
+
+bash scripts/run_pipeline.sh
+First run parses all PCAPs (~10–30 min) and caches flows to outputs/flow_cache.pkl. Every subsequent run skips parsing.
+
+Step 3 — Train individually if needed
+
+# Phase 1 only (benign LM, ~20 epochs on Monday PCAP)
+python scripts/train.py --config config.yaml --phase 1
+
+# Phase 2 only (supervised, loads Phase-1 checkpoint automatically)
+python scripts/train.py --config config.yaml --phase 2
+
+# Force re-parse PCAPs
+python scripts/train.py --config config.yaml --phase both --no-cache
+Step 4 — Evaluate
+
+# Unsupervised (Phase-1 model, perplexity-based)
+python scripts/evaluate.py --config config.yaml \
+    --checkpoint checkpoints/phase1_best.pt --mode perplexity
+
+# Supervised (Phase-2 model, classifier)
+python scripts/evaluate.py --config config.yaml \
+    --checkpoint checkpoints/phase2_best.pt --mode supervised
+
+# Combined
+python scripts/evaluate.py --config config.yaml \
+    --checkpoint checkpoints/phase2_best.pt --mode combined
+Step 5 — Generate all paper figures
+
+python scripts/visualize.py --config config.yaml --mode perplexity
+python scripts/visualize.py --config config.yaml --mode supervised
+Step 6 — TensorBoard (training curves)
+
+tensorboard --logdir logs/ --port 6006
+# open http://localhost:6006
+Paper Figures Generated (plots/)
+Figure	Content	Paper Section
+fig1_score_distribution_*.pdf	KDE: benign vs each attack type	Key result
+fig2_roc_curves_*.pdf	ROC per attack day + micro-avg	Evaluation
+fig3_pr_curves_*.pdf	PR curve per day (imbalanced metric)	Evaluation
+fig4_confusion_matrix_*.pdf	Normalised confusion matrix	Evaluation
+fig5_seq_lengths_and_compute.pdf	Seq length dist + O(T) vs O(T²)	Gap-2 proof
+fig6_per_attack_f1_*.pdf	F1 + ROC-AUC bar chart per attack	Ablation
+fig7_threshold_calibration_*.pdf	FPR/TPR vs threshold	Deployment
+fig8_detection_heatmap_*.pdf	Per-metric heatmap across days	Summary table
+fig9_vocab_breakdown.pdf	Token vocabulary composition	Method
+
